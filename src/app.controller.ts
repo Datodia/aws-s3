@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Post, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { AppService } from './app.service';
-import { UploadService } from './upload/upload.service';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 
 @Controller()
@@ -18,11 +17,11 @@ export class AppController {
   @Post('upload-image')
   @UseInterceptors(FileInterceptor('file'))
   async uploadImage(@UploadedFile() file: Express.Multer.File){
-    const type = file.mimetype.split('/')[1]
-    const filePath = `uploads/${new Date().getTime()}.${type}`
+    const path = Math.random().toString().slice(2)
+    const filePath = `uploads/${path}`
     await this.appService.uploadImage(filePath, file.buffer)
 
-    return this.downloadImage(filePath)
+    return this.appService.downloadImage(filePath)
   }
 
 
@@ -32,15 +31,15 @@ export class AppController {
     console.log(files, "files")
     const uploadedFiles = []
     for(const file of files){
-      const type = file.mimetype.split('/')[1]
-      const filePath = `uploads/${new Date().getTime()}.${type}`
+      const path = Math.random().toString().slice(2)
+      const filePath = `uploads/${path}`
       await this.appService.uploadImage(filePath, file.buffer)
       uploadedFiles.push(filePath)
     }
 
     const dowloadableImages = []
     for(const path of uploadedFiles){
-      const imgUrl = await this.downloadImage(path)
+      const imgUrl = await this.appService.downloadImage(path)
       dowloadableImages.push(imgUrl)
     }
 

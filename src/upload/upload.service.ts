@@ -1,5 +1,6 @@
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { BadRequestException, Body, Injectable } from '@nestjs/common';
-import * as AWS from 'aws-sdk'
+import { Readable } from 'stream';
 
 
 @Injectable()
@@ -10,23 +11,27 @@ export class UploadService {
 
     constructor(){
         this.bucketName = process.env.AWS_BUCKET_NAME
-        this.storageService = new AWS.S3({
-            accessKeyId: process.env.AWS_ACCESS_KEY,
-            secretAccessKey: process.env.AWS_ACCESS_SECRET_KEY,
-            region: 'eu-north-1'
+        this.storageService = new S3Client({
+            credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY,
+                secretAccessKey: process.env.AWS_ACCESS_SECRET_KEY,
+            },
+            region: process.env.AWS_REGION
         })
     }
 
 
-    async uploadImage(name: string, fileBuffer: Buffer){
+    async uploadImage(filePath: string, fileBuffer: Buffer){
+        if(!filePath || !fileBuffer) throw new BadRequestException('File is required')
         try{
             const config = {
-                Key: name,
+                Key: filePath,
                 Bucket: this.bucketName,
                 Body: fileBuffer
             }
-
-            return this.storageService.putObject(config).promise()
+            const uploadCommand = new PutObjectCommand(config)
+            await this.storageService.send(uploadCommand)
+            return filePath
         }catch(e){
             throw new BadRequestException('Could not upload file')
         }
@@ -34,23 +39,34 @@ export class UploadService {
 
 
     async downloadImage(filePath: string){
-        const config = {
-            Bucket: this.bucketName,
-            Key: filePath
-        }
-        return this.storageService.getSignedUrlPromise('getObject', config)
-    }
-
-
-    async deleteImg(filePath){
         if(!filePath) return
         const config = {
             Bucket: this.bucketName,
             Key: filePath
+        }
+        const getCommand = new GetObjectCommand(config)
+        const fileStream = await this.storageService.send(getCommand)
+
+       if (fileStream.Body instanceof Readable) {
+            const chunks = []
+            for await (const chunk of fileStream.Body) {
+                chunks.push(chunk)
+            }
+            const fileBuffer = Buffer.concat(chunks)
+            const b64 = fileBuffer.toString('base64')
+            const file = `data:${fileStream.ContentType};base64,${b64}`
+            return file
+        }   
+    }
+
+    async deleteImg(filePath: string){
+        if(!filePath) throw new BadRequestException('File path is required')
+        const config = {
+            Bucket: this.bucketName,
+            Key: filePath
         } 
-
-        await this.storageService.deleteObject(config).promise()
-
+        const deleteCommand = new DeleteObjectCommand(config)
+        await this.storageService.send(deleteCommand)
         return 'deleted successfully'
     }
 
